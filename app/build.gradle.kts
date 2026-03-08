@@ -88,8 +88,8 @@ dependencies {
     // ML Kit
     implementation(libs.mlkit.text.recognition)
     
-    // Gemini
-    implementation(libs.google.generativeai)
+    // Gemini - UPDATED TO 0.9.0
+    implementation("com.google.ai.client.generativeai:generativeai:0.9.0")
     
     // Permissions
     implementation(libs.accompanist.permissions)

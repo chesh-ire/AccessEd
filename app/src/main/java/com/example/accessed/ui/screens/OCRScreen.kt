@@ -3,8 +3,11 @@ package com.example.accessed.ui.screens
 import android.Manifest
 import android.speech.tts.TextToSpeech
 import android.util.Log
+import android.util.Size
 import android.view.ViewGroup
 import androidx.camera.core.*
+import androidx.camera.core.resolutionselector.ResolutionSelector
+import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
@@ -25,7 +28,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.concurrent.futures.await
-import androidx.core.content.ContextCompat
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
@@ -71,7 +73,10 @@ fun OCRScreen() {
             CenterAlignedTopAppBar(
                 title = { Text("Smart OCR Reader", fontWeight = FontWeight.Bold) },
                 actions = {
-                    IconButton(onClick = { recognizedText = "No text detected yet." }) {
+                    IconButton(onClick = { 
+                        recognizedText = "No text detected yet."
+                        isScanning = false
+                    }) {
                         Icon(Icons.Rounded.Refresh, contentDescription = "Clear")
                     }
                 },
@@ -98,10 +103,20 @@ fun OCRScreen() {
                         CameraPreview(
                             modifier = Modifier.fillMaxSize(),
                             onTextDetected = { text ->
-                                recognizedText = text
-                                isScanning = false
+                                if (text.isNotBlank()) {
+                                    recognizedText = text
+                                }
                             }
                         )
+                        // Overlay to indicate scanning area
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(32.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            // You could add a scanning frame here
+                        }
                     } else {
                         Column(
                             modifier = Modifier.fillMaxSize(),
@@ -109,14 +124,16 @@ fun OCRScreen() {
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Icon(
-                                Icons.Rounded.Camera,
+                                if (recognizedText != "No text detected yet." && recognizedText != "Scanning...") 
+                                    Icons.Rounded.Description else Icons.Rounded.Camera,
                                 contentDescription = null,
                                 modifier = Modifier.size(64.dp),
                                 tint = Color.White.copy(alpha = 0.5f)
                             )
                             Spacer(modifier = Modifier.height(16.dp))
                             Text(
-                                "Camera Paused",
+                                if (recognizedText != "No text detected yet." && recognizedText != "Scanning...")
+                                    "Extraction Complete" else "Tap below to start scanning",
                                 color = Color.White,
                                 style = MaterialTheme.typography.titleMedium
                             )
@@ -182,7 +199,12 @@ fun OCRScreen() {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         LargeFloatingActionButton(
-                            onClick = { isScanning = !isScanning },
+                            onClick = { 
+                                if (!isScanning) {
+                                    recognizedText = "Scanning..."
+                                }
+                                isScanning = !isScanning 
+                            },
                             containerColor = if (isScanning) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primary
                         ) {
                             Icon(
@@ -198,7 +220,9 @@ fun OCRScreen() {
                                     tts.value?.stop()
                                     isPlaying = false
                                 } else {
-                                    if (recognizedText.isNotBlank() && recognizedText != "No text detected yet.") {
+                                    if (recognizedText.isNotBlank() && 
+                                        recognizedText != "No text detected yet." && 
+                                        recognizedText != "Scanning...") {
                                         tts.value?.speak(recognizedText, TextToSpeech.QUEUE_FLUSH, null, "OCR_ID")
                                         isPlaying = true
                                     }
@@ -227,12 +251,20 @@ fun CameraPreview(
     val lifecycleOwner = LocalLifecycleOwner.current
     val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
     val recognizer = remember { TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS) }
+    
     val previewView = remember { 
         PreviewView(context).apply {
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
+            scaleType = PreviewView.ScaleType.FILL_CENTER
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            cameraExecutor.shutdown()
         }
     }
 
@@ -240,12 +272,26 @@ fun CameraPreview(
         try {
             val cameraProvider = ProcessCameraProvider.getInstance(context).await()
             
-            val preview = Preview.Builder().build().also {
-                it.setSurfaceProvider(previewView.surfaceProvider)
-            }
+            // Modern Resolution Selector
+            val resolutionSelector = ResolutionSelector.Builder()
+                .setResolutionStrategy(
+                    ResolutionStrategy(
+                        Size(1280, 720),
+                        ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER
+                    )
+                )
+                .build()
+
+            val preview = Preview.Builder()
+                .setResolutionSelector(resolutionSelector)
+                .build()
+                .also {
+                    it.setSurfaceProvider(previewView.surfaceProvider)
+                }
 
             val imageAnalyzer = ImageAnalysis.Builder()
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .setResolutionSelector(resolutionSelector)
                 .build()
                 .also {
                     it.setAnalyzer(cameraExecutor) { imageProxy ->
@@ -284,8 +330,10 @@ private fun processImageProxy(
         val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
         recognizer.process(image)
             .addOnSuccessListener { visionText ->
-                if (visionText.text.isNotBlank()) {
-                    onTextDetected(visionText.text)
+                // Filter out very short or likely noise text to improve quality
+                val filteredText = visionText.text
+                if (filteredText.length > 3) {
+                    onTextDetected(filteredText)
                 }
             }
             .addOnFailureListener { e ->
