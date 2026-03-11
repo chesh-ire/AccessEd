@@ -57,7 +57,9 @@ fun NavGraph(
         composable(Screen.Home.route) { 
             HomeScreen(onNavigate = { route -> navController.navigate(route) }) 
         }
-        composable(Screen.Map.route) { SmartCampusMapScreen() }
+        composable(Screen.Map.route) { 
+            SmartCampusMapScreen(onBack = { navController.popBackStack() }) 
+        }
         composable(Screen.OCR.route) { OCRScreen() }
         composable(Screen.Transcription.route) { TranscriptionScreenContent() }
         composable(Screen.Dialogue.route) { DialogueScreen() }

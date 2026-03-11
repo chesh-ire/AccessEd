@@ -144,7 +144,6 @@ fun TranscriptionScreenContent() {
                 .padding(16.dp)
         ) {
             if (audioPermissionState.status.isGranted) {
-                // Transcription Area
                 Card(
                     modifier = Modifier
                         .weight(1f)
@@ -183,7 +182,6 @@ fun TranscriptionScreenContent() {
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Simplified Text Area
                 AnimatedVisibility(visible = simplifiedText != null) {
                     Card(
                         modifier = Modifier
@@ -207,7 +205,6 @@ fun TranscriptionScreenContent() {
                     }
                 }
 
-                // Controls
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly,
@@ -277,11 +274,13 @@ fun TranscriptionScreenContent() {
     }
 }
 
+// TranscriptionScreen.kt - Updated simplify function
 private suspend fun simplifyTextWithGemini(text: String): String {
-    val config = generationConfig {
-        temperature = 0.7f
+    // 1. Basic configuration
+    val config = generationConfig {        temperature = 0.7f
     }
-    
+
+    // 2. Safety settings (relaxed to avoid false flags)
     val safetySettings = listOf(
         SafetySetting(HarmCategory.HARASSMENT, BlockThreshold.NONE),
         SafetySetting(HarmCategory.HATE_SPEECH, BlockThreshold.NONE),
@@ -289,31 +288,30 @@ private suspend fun simplifyTextWithGemini(text: String): String {
         SafetySetting(HarmCategory.DANGEROUS_CONTENT, BlockThreshold.NONE)
     )
 
+    // 3. Check if key is empty
+    if (BuildConfig.GEMINI_API_KEY.isEmpty() || BuildConfig.GEMINI_API_KEY == "null") {
+        return "Error: API Key is missing. Please check local.properties and Rebuild."
+    }
+
     return try {
-        // Using "gemini-1.5-flash-latest" as it is often more reliably mapped in the SDK
+        // 4. Using the most standard model identifier
         val generativeModel = GenerativeModel(
-            modelName = "gemini-1.5-flash-latest", 
+            modelName = "gemini-1.5-flash",
             apiKey = BuildConfig.GEMINI_API_KEY,
             generationConfig = config,
             safetySettings = safetySettings
         )
 
-        val prompt = "Please simplify this text into easy language for a student: \"$text\""
+        val prompt = "Simplify this text for a student: \"$text\""
         val response = generativeModel.generateContent(prompt)
         response.text ?: "The AI returned an empty response."
     } catch (e: Exception) {
-        Log.e("Gemini", "Error with flash-latest, trying flash", e)
-        try {
-            val fallbackModel = GenerativeModel(
-                modelName = "gemini-1.5-flash",
-                apiKey = BuildConfig.GEMINI_API_KEY,
-                generationConfig = config
-            )
-            val response = fallbackModel.generateContent("Simplify this: $text")
-            response.text ?: "Empty response from fallback."
-        } catch (e2: Exception) {
-            Log.e("Gemini", "Final failure", e2)
-            "Error: ${e2.message}. Please check if your API Key is valid and has Gemini API enabled in Google AI Studio."
+        Log.e("Gemini", "Error occurred", e)
+        val msg = e.message ?: "Unknown error"
+        if (msg.contains("404")) {
+            "Error 404: Model not found. Please try: Build > Rebuild Project. If that fails, create a NEW key in AI Studio."
+        } else {
+            "Error: $msg"
         }
     }
 }

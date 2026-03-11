@@ -97,6 +97,7 @@ dependencies {
     // Room
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
+    implementation(libs.play.services.location)
     ksp(libs.androidx.room.compiler)
     
     // Explicit Guava dependency for ListenableFuture resolution
