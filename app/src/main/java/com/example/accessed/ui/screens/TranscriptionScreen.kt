@@ -55,42 +55,19 @@ fun TranscriptionScreenContent() {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 5000)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 5000)
         }
     }
 
     DisposableEffect(Unit) {
         val listener = object : RecognitionListener {
-            override fun onReadyForSpeech(params: Bundle?) {
-                Log.d("STT", "Ready for speech")
-                isListening = true
-            }
-            override fun onBeginningOfSpeech() {
-                Log.d("STT", "Beginning of speech")
-            }
+            override fun onReadyForSpeech(params: Bundle?) { isListening = true }
+            override fun onBeginningOfSpeech() {}
             override fun onRmsChanged(rmsdB: Float) {}
             override fun onBufferReceived(buffer: ByteArray?) {}
-            override fun onEndOfSpeech() {
-                Log.d("STT", "End of speech")
-            }
+            override fun onEndOfSpeech() {}
             override fun onError(error: Int) {
                 isListening = false
-                val errorMessage = when (error) {
-                    SpeechRecognizer.ERROR_AUDIO -> "Audio recording error"
-                    SpeechRecognizer.ERROR_CLIENT -> "Client side error"
-                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Insufficient permissions"
-                    SpeechRecognizer.ERROR_NETWORK -> "Network error"
-                    SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Network timeout"
-                    SpeechRecognizer.ERROR_NO_MATCH -> "No speech input detected"
-                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Service busy"
-                    SpeechRecognizer.ERROR_SERVER -> "Server error"
-                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Speech timeout"
-                    else -> "Unknown error: $error"
-                }
-                Log.e("STT", "Error: $errorMessage ($error)")
-                if (error != SpeechRecognizer.ERROR_NO_MATCH) {
-                    partialText = ""
-                }
+                if (error != SpeechRecognizer.ERROR_NO_MATCH) partialText = ""
             }
             override fun onResults(results: Bundle?) {
                 isListening = false
@@ -110,15 +87,7 @@ fun TranscriptionScreenContent() {
             override fun onEvent(eventType: Int, params: Bundle?) {}
         }
         speechRecognizer.setRecognitionListener(listener)
-        onDispose {
-            speechRecognizer.destroy()
-        }
-    }
-
-    LaunchedEffect(transcribedText, partialText) {
-        if (transcribedText.isNotEmpty() || partialText.isNotEmpty()) {
-            listState.animateScrollToItem(0) 
-        }
+        onDispose { speechRecognizer.destroy() }
     }
 
     Scaffold(
@@ -182,25 +151,32 @@ fun TranscriptionScreenContent() {
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                AnimatedVisibility(visible = simplifiedText != null) {
+                AnimatedVisibility(visible = simplifiedText != null || isSimplifying) {
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(bottom = 16.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.tertiaryContainer
+                        )
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.tertiary)
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("Simplified Explanation", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onTertiaryContainer)
+                                Text("AI Simplified Notes", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onTertiaryContainer)
                                 Spacer(modifier = Modifier.weight(1f))
                                 IconButton(onClick = { simplifiedText = null }, modifier = Modifier.size(24.dp)) {
                                     Icon(Icons.Rounded.Close, contentDescription = "Close", modifier = Modifier.size(16.dp))
                                 }
                             }
                             Spacer(modifier = Modifier.height(8.dp))
-                            Text(simplifiedText ?: "", style = MaterialTheme.typography.bodyMedium)
+                            if (isSimplifying) {
+                                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                                Text("AI is simplifying the text...", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
+                            } else {
+                                Text(simplifiedText ?: "", style = MaterialTheme.typography.bodyMedium)
+                            }
                         }
                     }
                 }
@@ -216,20 +192,15 @@ fun TranscriptionScreenContent() {
                                 speechRecognizer.stopListening()
                                 isListening = false
                             } else {
-                                try {
-                                    speechRecognizer.startListening(recognizerIntent)
-                                    isListening = true
-                                } catch (e: Exception) {
-                                    Log.e("STT", "Failed to start listening", e)
-                                    isListening = false
-                                }
+                                speechRecognizer.startListening(recognizerIntent)
+                                isListening = true
                             }
                         },
                         containerColor = if (isListening) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
                     ) {
                         Icon(
                             if (isListening) Icons.Rounded.Stop else Icons.Rounded.Mic,
-                            contentDescription = if (isListening) "Stop Recording" else "Start Recording",
+                            contentDescription = null,
                             modifier = Modifier.size(36.dp),
                             tint = Color.White
                         )
@@ -250,23 +221,15 @@ fun TranscriptionScreenContent() {
                         modifier = Modifier.height(56.dp),
                         shape = MaterialTheme.shapes.medium
                     ) {
-                        if (isSimplifying) {
-                            CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MaterialTheme.colorScheme.onPrimary)
-                        } else {
-                            Icon(Icons.Rounded.AutoAwesome, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Simplify")
-                        }
+                        Icon(Icons.Rounded.AutoAwesome, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Simplify Transcription")
                     }
                 }
             } else {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Microphone permission is required for transcription")
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Button(onClick = { audioPermissionState.launchPermissionRequest() }) {
-                            Text("Grant Permission")
-                        }
+                    Button(onClick = { audioPermissionState.launchPermissionRequest() }) {
+                        Text("Grant Microphone Permission")
                     }
                 }
             }
@@ -274,44 +237,44 @@ fun TranscriptionScreenContent() {
     }
 }
 
-// TranscriptionScreen.kt - Updated simplify function
 private suspend fun simplifyTextWithGemini(text: String): String {
-    // 1. Basic configuration
-    val config = generationConfig {        temperature = 0.7f
-    }
-
-    // 2. Safety settings (relaxed to avoid false flags)
-    val safetySettings = listOf(
-        SafetySetting(HarmCategory.HARASSMENT, BlockThreshold.NONE),
-        SafetySetting(HarmCategory.HATE_SPEECH, BlockThreshold.NONE),
-        SafetySetting(HarmCategory.SEXUALLY_EXPLICIT, BlockThreshold.NONE),
-        SafetySetting(HarmCategory.DANGEROUS_CONTENT, BlockThreshold.NONE)
-    )
-
-    // 3. Check if key is empty
-    if (BuildConfig.GEMINI_API_KEY.isEmpty() || BuildConfig.GEMINI_API_KEY == "null") {
-        return "Error: API Key is missing. Please check local.properties and Rebuild."
+    val apiKey = BuildConfig.GEMINI_API_KEY
+    if (apiKey.isEmpty() || apiKey == "null") {
+        return "ERROR: Gemini API Key not found. Please add GEMINI_API_KEY to your local.properties file and Rebuild Project."
     }
 
     return try {
-        // 4. Using the most standard model identifier
+        // Updated to flash-latest for better regional support
         val generativeModel = GenerativeModel(
-            modelName = "gemini-1.5-flash",
-            apiKey = BuildConfig.GEMINI_API_KEY,
-            generationConfig = config,
-            safetySettings = safetySettings
+            modelName = "gemini-1.5-flash-latest",
+            apiKey = apiKey,
+            generationConfig = generationConfig { 
+                temperature = 0.5f 
+                topP = 0.95f
+                topK = 40
+            },
+            safetySettings = listOf(
+                SafetySetting(HarmCategory.HARASSMENT, BlockThreshold.NONE),
+                SafetySetting(HarmCategory.HATE_SPEECH, BlockThreshold.NONE),
+                SafetySetting(HarmCategory.DANGEROUS_CONTENT, BlockThreshold.NONE),
+                SafetySetting(HarmCategory.SEXUALLY_EXPLICIT, BlockThreshold.NONE)
+            )
         )
 
-        val prompt = "Simplify this text for a student: \"$text\""
+        val prompt = "Please simplify this text for a student using clear bullet points: \"$text\""
+        
         val response = generativeModel.generateContent(prompt)
-        response.text ?: "The AI returned an empty response."
+        response.text ?: "AI returned no text. Try transcribing a longer sentence."
     } catch (e: Exception) {
-        Log.e("Gemini", "Error occurred", e)
-        val msg = e.message ?: "Unknown error"
-        if (msg.contains("404")) {
-            "Error 404: Model not found. Please try: Build > Rebuild Project. If that fails, create a NEW key in AI Studio."
+        Log.e("GeminiError", "Connection failed", e)
+        // Simplified error message for the user
+        val errorMsg = e.message ?: "Unexpected response"
+        if (errorMsg.contains("API_KEY_INVALID")) {
+            "Error: Your API Key is invalid. Please create a new one in Google AI Studio."
+        } else if (errorMsg.contains("User location is not supported")) {
+            "Error: Gemini AI is not available in your region yet."
         } else {
-            "Error: $msg"
+            "AI Connection Error: $errorMsg. Please try again in a moment."
         }
     }
 }

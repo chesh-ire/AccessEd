@@ -6,6 +6,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.example.accessed.MainActivity
 import com.example.accessed.ui.navigation.NavGraph
 import com.example.accessed.ui.navigation.Screen
 import com.example.accessed.ui.navigation.bottomNavItems
@@ -15,6 +16,18 @@ fun MainScreen() {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
+
+    // Handle background trigger from SafetyService
+    LaunchedEffect(MainActivity.isEmergencyTriggeredByService) {
+        if (MainActivity.isEmergencyTriggeredByService) {
+            // Navigate to Safety Hub if not already there
+            if (currentRoute != Screen.SafetyHub.route) {
+                navController.navigate(Screen.SafetyHub.route) {
+                    popUpTo(Screen.Home.route)
+                }
+            }
+        }
+    }
 
     // Define which screens should NOT show the bottom bar
     val authScreens = listOf(Screen.Welcome.route, Screen.Login.route, Screen.Signup.route)
